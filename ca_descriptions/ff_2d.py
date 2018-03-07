@@ -21,59 +21,87 @@ counter = 0
 
 #DO THE SURROUNDING CELLS FEATURE
 
-def transition_func(grid, neighbourstates, neighbourcounts, fuelCount, windBias, windSpeed, moisture):
-	
+def transition_func(grid, neighbourstates, neighbourcounts, fuelCount, windBias, moisture, initGrid, terrainBias):
+
+    
     randoms = np.random.rand(200,200)*100
     
+    dead_neighbours, live_neighbours, dense_neighbours, fast_neighbours, water_neighbours, burnt_neighbours, town = neighbourcounts
+    NW, N, NE, W, E, SW, S, SE = neighbourstates 
     
-    dead_neighbours, live_neighbours, shrub_neighbours, fast_neighbours, water_neighbours, burnout_neighbours = neighbourcounts
-    NW, N, NE, W, E, SW, S, SE = neighbourstates
+    terrainBias[grid == 0] = 1
+    terrainBias[grid == 2] = 2
+    terrainBias[grid == 3] = 3
+    
+    biasedNeighbours = neighbourstates
+    
+    biasedNeighbours[biasedNeighbours != 1] = 0
+    biasedNeighbours *= (1/8)
+   
     
     
+    surroundingBias = live_neighbours*(1/8)
+
+
+    wNW, wN, wNE, wW, wE, wSW, wS, wSE = [a*b for a,b in zip(biasedNeighbours,windBias)]
+    totalWindBias = (wNW + wN + wNE + wW + wE + wSW + wS + wSE)*4
+    
+    
+    birth =  ( ((randoms - surroundingBias -  totalWindBias < 25) & ( (grid == 0) | (grid == 6) ) ) | ((randoms - surroundingBias -  totalWindBias < 2) & (grid == 2) ) | ((randoms - surroundingBias -  totalWindBias < 50) & (grid == 3) )  ) & (live_neighbours >= 1) & (moisture <= 1) 
+    #birth =  (((randoms - windBias - surroundingBias < 25) & (grid == 0) ) | ((randoms - windBias - surroundingBias < 2) & (grid == 2) ) | ((randoms - windBias - surroundingBias < 50) & (grid == 3) )) & (live_neighbours >= 1) & (moisture <= 1) 
+    #birth =  (randoms - windBias - surroundingBias < 25) & (live_neighbours >= 1) & (grid == 0) & (moisture <= 1)     
+    #harderBirth = (randoms - windBias - surroundingBias < 2) & (live_neighbours >= 1) & (grid == 2) & (moisture <= 1) 
+    #easyBirth = (randoms - windBias - surroundingBias < 50) & (live_neighbours >= 1) & (grid == 3) & (moisture <= 1)  
+    death = (fuelCount == 0)
+    
+    fuelCount[birth & ( (grid == 0) | (grid == 6) ) ] = 35
+    fuelCount[birth & (grid == 2)] = 60
+    fuelCount[birth & (grid == 3)] = 20
+
+    
+    grid[birth] = 1
+    moisture[birth] = 0
+    grid[death] = 5
+     
+
+    yCenter = 50
+    xCenter = 10
+    rad = 22.56
+
+    yWater,xWater = np.ogrid[-yCenter:200-yCenter, -xCenter:200-xCenter]
+    mask = xWater*xWater + yWater*yWater <= rad*rad
+    
+    if (counter == 65):
+        moisture[mask] = 100
+        grid[mask] = 4
+    
+    if (counter == 75):
+        grid[(mask & (grid != 5) & (initGrid != 1) )] = initGrid[(mask & (grid != 5) & (initGrid != 1) )]
+        
+        
+
+    moisture[moisture >= 2 ] -= (1+surroundingBias[moisture >= 2 ])
+    fuelCount[((fuelCount >= 1) &  (moisture < 1))] -= 1 
+    
+    if(checkForReachTown(grid, counter) != "NOT REACHED"):
+    	print(checkForReachTown(grid, counter))
     
     global counter
     counter += 1
     
-    
-    surroundingBias = live_neighbours*2 
-    
-    
-    
-    windBias[NW==1] += 1*windSpeed
-    windBias[N==1] += 4*windSpeed
-    windBias[NE==1] += 1*windSpeed
-    windBias[SW==1] -= 1*windSpeed
-    windBias[S==1] -= 4*windSpeed
-    windBias[SE==1] -= 1*windSpeed
-    
-    birth =  (randoms - windBias - surroundingBias < 25) & (live_neighbours >= 1) & (grid == 0) & (moisture < 1) 
-    harderBirth = (randoms - windBias - surroundingBias < 2) & (live_neighbours >= 1) & (grid == 2) & (moisture < 1) 
-    easyBirth = (randoms - windBias - surroundingBias < 50) & (live_neighbours >= 1) & (grid == 3) & (moisture < 1)  
-    death = (fuelCount == 0)
-    
-    grid[birth | harderBirth | easyBirth] = 1
-    grid[death] = 5
-    fuelCount[birth] = 35
-    fuelCount[easyBirth] = 20
-    fuelCount[harderBirth] = 60 
-
-    
-    if (counter == 20):
-    	moisture[100:140 , 0:50] = 15
-    	#grid[100:140 , 0:50] = config.initial_grid[100:140 , 0:50] NEEDS FIXING
-
-
-    
-    moisture[moisture >= 1 ] -= 1
-    fuelCount[fuelCount >= 1 ] -= 1 
-    
-    windBias[:, :] = 0 #resetting all windBiases 
-    
     return grid
 
-
-def randomNum(limit):
-    return random.randint(0,limit)
+def checkForReachTown(g, time):
+	
+	town = g[195:200, 0:10]
+	reached = (town == 1)
+	if(town[reached].any()):
+		return time
+	else:
+		return "NOT REACHED"
+	
+	
+	
 
 def setup(args):
     config_path = args[0]
@@ -82,13 +110,13 @@ def setup(args):
     # ---THE CA MUST BE RELOADED IN THE GUI IF ANY OF THE BELOW ARE CHANGED---
     config.title = "Forest Fire Simulation"
     config.dimensions = 2
-    config.states = (0, 1, 2, 3, 4, 5)
+    config.states = (0, 1, 2, 3, 4, 5, 6)
     # ------------------------------------------------------------------------
 
     # ---- Override the defaults below (these may be changed at anytime) ----
 
-    config.state_colors = [(0,1,0),(1,0,0),(0.133,0.55,0.133),(0.7, 0.4, 0), (0,0,1), (0,0,0)]
-    # config.num_generations = 150
+    config.state_colors = [(0,1,0),(1,0,0),(0.133,0.55,0.133),(0.7, 0.4, 0), (0,0,1), (0,0,0), (0.66,0.66,0.66)]
+    config.num_generations = 450
     if config.grid_dims is None:
             if config.dimensions == 2:
                 config.grid_dims = (200, 200)
@@ -107,6 +135,9 @@ def setup(args):
                         continue
                     if (  (row >= config.grid_dims[0]/10 and row <= (7*config.grid_dims[0])/10 ) and (col >= ((13*config.grid_dims[1])/20) and col <= (7*config.grid_dims[1])/10)  ):
                         newGrid[row][col] = 3
+                        continue
+                    if (  (row > (195*config.grid_dims[0])/200 and row <= config.grid_dims[0] ) and (col >= ((0*config.grid_dims[1])) and col < (config.grid_dims[1])/20)  ):
+                        newGrid[row][col] = 6
                         continue
                     newGrid[row][col] = 0
                     
@@ -128,17 +159,21 @@ def setup(args):
 
 def main():
     # Open the config object
-    windSpeed = 2 # initial arbitrary value 
     config = setup(sys.argv[1:])
     fuelCount = np.zeros(config.grid_dims)
     fuelCount.fill(-1)
-    windBias = np.zeros(config.grid_dims) 
+    fuelCount[(config.initial_grid == 1)] = 35
+    #windBias = np.zeros(config.grid_dims) 
     
-    moisture = np.zeros(config.grid_dims) 
+    moisture = np.zeros(config.grid_dims)
+    
+    terrainBias = np.zeros(config.grid_dims)
+    
+    windBias = [2, 8, 2, 0, 0, -1, -4, -1]
     
     
     # Create grid object
-    grid = Grid2D(config, (transition_func, fuelCount, windBias, windSpeed, moisture))
+    grid = Grid2D(config, (transition_func, fuelCount, windBias, moisture, config.initial_grid, terrainBias))
     #fuelCount = np.zeros(grid.shape[0], grid.shape[1])
     
     #print("GRID", type(grid))

@@ -23,15 +23,15 @@ counter = 0
 
 def transition_func(grid, neighbourstates, neighbourcounts, fuelCount, windBias, moisture, initGrid, terrainBias):
 
-    
+    global counter
     randoms = np.random.rand(200,200)*100
     
     dead_neighbours, live_neighbours, dense_neighbours, fast_neighbours, water_neighbours, burnt_neighbours, town = neighbourcounts
     NW, N, NE, W, E, SW, S, SE = neighbourstates 
     
-    terrainBias[grid == 0] = 1
-    terrainBias[grid == 2] = 2
-    terrainBias[grid == 3] = 3
+    terrainBias[grid == 0] = 0.5
+    terrainBias[grid == 2] = 0.2
+    terrainBias[grid == 3] = 1
     
     biasedNeighbours = neighbourstates
     
@@ -40,23 +40,27 @@ def transition_func(grid, neighbourstates, neighbourcounts, fuelCount, windBias,
    
     
     
-    surroundingBias = live_neighbours*(1/8)
+    surroundingBias = ((live_neighbours*(1/8))*0.35)
 
 
     wNW, wN, wNE, wW, wE, wSW, wS, wSE = [a*b for a,b in zip(biasedNeighbours,windBias)]
-    totalWindBias = (wNW + wN + wNE + wW + wE + wSW + wS + wSE)*4
+    totalWindBias = (wNW + wN + wNE + wW + wE + wSW + wS + wSE)*2
     
+
     
-    birth =  ( ((randoms - surroundingBias -  totalWindBias < 25) & ( (grid == 0) | (grid == 6) ) ) | ((randoms - surroundingBias -  totalWindBias < 2) & (grid == 2) ) | ((randoms - surroundingBias -  totalWindBias < 50) & (grid == 3) )  ) & (live_neighbours >= 1) & (moisture <= 1) 
+    overallProbability = 100*( surroundingBias * totalWindBias * terrainBias )
+    
+    birth = ((randoms - overallProbability) <= 0 & (moisture <= 1))
+    #birth =  ( ((randoms - surroundingBias -  totalWindBias < 25) & ( (grid == 0) | (grid == 6) ) ) | ((randoms - surroundingBias -  totalWindBias < 2) & (grid == 2) ) | ((randoms - surroundingBias -  totalWindBias < 50) & (grid == 3) )  ) & (live_neighbours >= 1) & (moisture <= 1) 
     #birth =  (((randoms - windBias - surroundingBias < 25) & (grid == 0) ) | ((randoms - windBias - surroundingBias < 2) & (grid == 2) ) | ((randoms - windBias - surroundingBias < 50) & (grid == 3) )) & (live_neighbours >= 1) & (moisture <= 1) 
     #birth =  (randoms - windBias - surroundingBias < 25) & (live_neighbours >= 1) & (grid == 0) & (moisture <= 1)     
     #harderBirth = (randoms - windBias - surroundingBias < 2) & (live_neighbours >= 1) & (grid == 2) & (moisture <= 1) 
     #easyBirth = (randoms - windBias - surroundingBias < 50) & (live_neighbours >= 1) & (grid == 3) & (moisture <= 1)  
     death = (fuelCount == 0)
     
-    fuelCount[birth & ( (grid == 0) | (grid == 6) ) ] = 35
-    fuelCount[birth & (grid == 2)] = 60
-    fuelCount[birth & (grid == 3)] = 20
+    fuelCount[birth & ( (grid == 0) | (grid == 6) ) ] = 60
+    fuelCount[birth & (grid == 2)] = 365
+    fuelCount[birth & (grid == 3)] = 5
 
     
     grid[birth] = 1
@@ -64,18 +68,31 @@ def transition_func(grid, neighbourstates, neighbourcounts, fuelCount, windBias,
     grid[death] = 5
      
 
+    # yCenter = 50
+    # xCenter = 10
+    # rad = 7.12
+
+    # yWater,xWater = np.ogrid[-yCenter:200-yCenter, -xCenter:200-xCenter]
+    # mask = xWater*xWater + yWater*yWater <= rad*rad
+    
+    
+    
     yCenter = 50
     xCenter = 10
-    rad = 22.56
-
-    yWater,xWater = np.ogrid[-yCenter:200-yCenter, -xCenter:200-xCenter]
-    mask = xWater*xWater + yWater*yWater <= rad*rad
+    yLimUpper = 2
+    yLimLower = -2
+    xLimUpper = 20
+    xLimLower = -20
     
-    if (counter == 65):
+    yWater,xWater = np.ogrid[-yCenter:200-yCenter, -xCenter:200-xCenter]
+    mask =  (((yLimLower <= yWater) & (yWater <= yLimUpper)) & ((xLimLower <= xWater) & (xWater <= xLimUpper)))
+    
+    
+    if (counter == 62):
         moisture[mask] = 100
         grid[mask] = 4
     
-    if (counter == 75):
+    if (counter == 72):
         grid[(mask & (grid != 5) & (initGrid != 1) )] = initGrid[(mask & (grid != 5) & (initGrid != 1) )]
         
         
@@ -85,8 +102,7 @@ def transition_func(grid, neighbourstates, neighbourcounts, fuelCount, windBias,
     
     if(checkForReachTown(grid, counter) != "NOT REACHED"):
     	print(checkForReachTown(grid, counter))
-    
-    global counter
+
     counter += 1
     
     return grid
@@ -169,7 +185,7 @@ def main():
     
     terrainBias = np.zeros(config.grid_dims)
     
-    windBias = [2, 8, 2, 0, 0, -1, -4, -1]
+    windBias = [5, 8, 5, 2, 2, 0.5, 0, 0.5]
     
     
     # Create grid object
